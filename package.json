@@ -1,0 +1,9 @@
+{
+  "name": "hibi-demo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Hibi cross-border payments demo — static UI + sandbox/testnet functions",
+  "dependencies": {
+    "ethers": "^6.13.0"
+  }
+}

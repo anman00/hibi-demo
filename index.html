@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Hibi — Cross-border payments</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;450;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0F1C18; --ink-2:#16302A;
+    --surface:#F6F4EF; --card:#FFFFFF;
+    --line:#E6E2D8; --line-2:#EFECE3;
+    --text:#16221E; --muted:#6E776F; --muted-2:#9AA39A;
+    --jade:#15795B; --jade-d:#0F5E47; --jade-soft:#E7F1EC;
+    --gold:#B88A3E; --gold-d:#8A6526; --gold-soft:#F4ECDB;
+    --danger:#B4452E;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(15,28,24,.04), 0 8px 24px rgba(15,28,24,.06);
+    --shadow-lg:0 24px 60px rgba(15,28,24,.16);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:Inter,system-ui,sans-serif;background:var(--surface);color:var(--text);-webkit-font-smoothing:antialiased;font-size:15px;line-height:1.45}
+  .tnum{font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .serif{font-family:Fraunces,Georgia,serif}
+  button{font-family:inherit}
+
+  /* ---------- Login ---------- */
+  #login{position:fixed;inset:0;background:var(--ink);display:flex;align-items:center;justify-content:center;z-index:50;transition:opacity .4s ease}
+  #login.gone{opacity:0;pointer-events:none}
+  .login-card{width:min(400px,92vw);background:var(--card);border-radius:18px;box-shadow:var(--shadow-lg);padding:38px 36px}
+  .login-brand{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+  .login-brand .mark{font-family:Fraunces;font-weight:600;font-size:30px;letter-spacing:-.01em}
+  .login-brand .dot{width:8px;height:8px;border-radius:50%;background:var(--gold);transform:translateY(-4px)}
+  .login-sub{color:var(--muted);font-size:13px;margin-bottom:26px}
+  .login-card label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:7px;letter-spacing:.02em}
+  .login-card .inp{margin-bottom:15px}
+  .login-foot{text-align:center;font-size:11.5px;color:var(--muted-2);margin-top:16px}
+  .demo-chip{position:fixed;left:50%;transform:translateX(-50%);bottom:22px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#C9D4CD;font-size:11.5px;padding:7px 14px;border-radius:99px;letter-spacing:.03em}
+
+  /* ---------- App shell ---------- */
+  .app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+  .side{background:var(--ink);color:#D9E2DC;display:flex;flex-direction:column;padding:22px 16px;position:sticky;top:0;height:100vh}
+  .brand{display:flex;align-items:baseline;gap:8px;padding:6px 8px 22px}
+  .brand .mark{font-family:Fraunces;font-weight:600;font-size:25px;color:#fff;letter-spacing:-.01em}
+  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--gold);transform:translateY(-3px)}
+  .nav{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+  .nav a{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:9px;color:#A9B6AE;text-decoration:none;font-size:13.5px;font-weight:450;transition:.15s;cursor:pointer}
+  .nav a svg{width:17px;height:17px;opacity:.85;flex:none}
+  .nav a:hover{background:rgba(255,255,255,.05);color:#E8EFEA}
+  .nav a.on{background:rgba(255,255,255,.08);color:#fff}
+  .nav a.on svg{opacity:1;color:var(--gold)}
+  .side .foot{margin-top:auto;border-top:1px solid rgba(255,255,255,.08);padding-top:14px}
+  .acct{display:flex;align-items:center;gap:10px;padding:4px 6px}
+  .acct .av{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#1d4d3c,#2e6b54);display:flex;align-items:center;justify-content:center;font-weight:600;color:#cfe6da;font-size:13px;flex:none}
+  .acct .nm{font-size:12.5px;color:#E8EFEA;font-weight:500;line-height:1.25}
+  .acct .rl{font-size:11px;color:#7E8E85}
+
+  .main{padding:30px 40px 60px;max-width:1080px;width:100%}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:26px}
+  .crumb{font-size:12px;color:var(--muted);letter-spacing:.04em}
+  .crumb b{color:var(--text);font-weight:600}
+  .badge{display:inline-flex;align-items:center;gap:7px;background:var(--jade-soft);color:var(--jade-d);font-size:11.5px;font-weight:600;padding:6px 11px;border-radius:99px;letter-spacing:.02em}
+  .badge .pulse{width:7px;height:7px;border-radius:50%;background:var(--jade);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(21,121,91,.45)}70%{box-shadow:0 0 0 7px rgba(21,121,91,0)}100%{box-shadow:0 0 0 0 rgba(21,121,91,0)}}
+  h1.page{font-family:Fraunces;font-weight:500;font-size:30px;letter-spacing:-.015em;margin-bottom:5px}
+  .page-sub{color:var(--muted);font-size:14px;margin-bottom:26px}
+
+  .screen{display:none;animation:fade .35s ease}
+  .screen.on{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .grid{display:grid;grid-template-columns:1.35fr .9fr;gap:22px;align-items:start}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .card .hd{padding:18px 22px;border-bottom:1px solid var(--line-2);font-weight:600;font-size:13.5px;letter-spacing:.01em;display:flex;align-items:center;gap:9px}
+  .card .hd .ix{width:22px;height:22px;border-radius:7px;background:var(--gold-soft);color:var(--gold);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;font-family:Fraunces;flex:none}
+  .card .bd{padding:22px}
+
+  /* ---------- Dashboard ---------- */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:22px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px}
+  .stat .k{font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+  .stat .v{font-family:Fraunces;font-weight:500;font-size:26px;margin-top:6px;letter-spacing:-.01em}
+  .stat .s{font-size:11.5px;color:var(--jade-d);margin-top:3px;font-weight:600}
+  table.hist{width:100%;border-collapse:collapse;font-size:13.5px}
+  table.hist th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600;text-align:left;padding:0 16px 11px}
+  table.hist td{padding:13px 16px;border-top:1px solid var(--line-2)}
+  table.hist tr.row:hover td{background:#FBFAF6}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:4px 10px;border-radius:99px}
+  .pill.ok{background:var(--jade-soft);color:var(--jade-d)}
+  .pill .tick{width:6px;height:6px;border-radius:50%;background:var(--jade)}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  .empty b{display:block;color:var(--text);font-size:15px;margin-bottom:4px}
+
+  /* ---------- Form ---------- */
+  .field{margin-bottom:17px}
+  .field:last-child{margin-bottom:0}
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:7px;letter-spacing:.02em}
+  .inp,.sel{width:100%;border:1px solid var(--line);background:#FCFBF8;border-radius:10px;padding:11px 13px;font-family:inherit;font-size:14.5px;color:var(--text);transition:.15s;outline:none}
+  .inp:focus,.sel:focus{border-color:var(--jade);background:#fff;box-shadow:0 0 0 3px rgba(21,121,91,.1)}
+  .inp::placeholder{color:var(--muted-2)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+  .amt-wrap{position:relative}
+  .amt-wrap .cur{position:absolute;left:13px;top:50%;transform:translateY(-50%);font-weight:600;color:var(--muted);font-size:14.5px;pointer-events:none}
+  .amt-wrap .inp{padding-left:46px;font-size:19px;font-weight:600}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;border:none;cursor:pointer;font-weight:600;font-size:14.5px;border-radius:11px;padding:13px 20px;transition:.16s;width:100%}
+  .btn-primary{background:var(--jade);color:#fff;box-shadow:0 2px 8px rgba(21,121,91,.25)}
+  .btn-primary:hover{background:var(--jade-d)}
+  .btn-primary:active{transform:translateY(1px)}
+  .btn-ghost{background:#fff;color:var(--text);border:1px solid var(--line)}
+  .btn-ghost:hover{background:#FAF8F3;border-color:#D9D4C7}
+  .btn svg{width:17px;height:17px}
+  .btn.wauto{width:auto}
+
+  /* ---------- Quote ---------- */
+  .quote-amt{font-family:Fraunces;font-weight:500;font-size:40px;letter-spacing:-.02em;line-height:1}
+  .quote-amt .c{font-size:20px;color:var(--muted);font-weight:500;margin-right:4px}
+  .recv-lbl{font-size:12px;color:var(--muted);font-weight:600;letter-spacing:.03em;margin-bottom:10px}
+  .ln{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line-2);font-size:13.5px}
+  .ln:last-of-type{border-bottom:none}
+  .ln .k{color:var(--muted)}
+  .ln .v{font-weight:600}
+  .rate-pill{display:inline-flex;align-items:center;gap:7px;background:var(--gold-soft);color:var(--gold-d);font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:99px}
+  .allin{background:var(--jade-soft);border:1px solid #CFE3D9;border-radius:11px;padding:13px 15px;display:flex;justify-content:space-between;align-items:center;margin-top:6px}
+  .allin .k{font-size:12.5px;color:var(--jade-d);font-weight:600}
+  .allin .v{font-family:Fraunces;font-weight:600;font-size:18px;color:var(--jade-d)}
+  .micro{font-size:11.5px;color:var(--muted-2);text-align:center;margin-top:13px;line-height:1.5}
+
+  /* comparison */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--line);border-radius:11px;overflow:hidden;margin-top:14px}
+  .compare>div{padding:14px 16px}
+  .compare .them{background:#FBFAF6;border-right:1px solid var(--line)}
+  .compare .us{background:var(--jade-soft)}
+  .compare .h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}
+  .compare .them .h{color:var(--muted)}
+  .compare .us .h{color:var(--jade-d)}
+  .compare .big{font-family:Fraunces;font-size:19px;font-weight:500}
+  .compare .s{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .compare .us .big,.compare .us .s{color:var(--jade-d)}
+
+  /* ---------- Tracking / six-stage ---------- */
+  .track-head{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:6px}
+  .track-amt{font-family:Fraunces;font-size:26px;font-weight:500;letter-spacing:-.01em}
+  .track-meta{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .eta{text-align:right}
+  .eta .big{font-family:Fraunces;font-size:22px;font-weight:500}
+  .eta .lbl{font-size:11px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+
+  /* DVA thread chip — the signature element */
+  .dva-thread{display:flex;align-items:center;gap:10px;background:linear-gradient(90deg,var(--gold-soft),#FBF6EA);border:1px solid #E8D9B8;border-radius:11px;padding:11px 15px;margin:16px 0 4px}
+  .dva-thread .seal{width:26px;height:26px;border-radius:8px;background:var(--gold);color:#fff;display:flex;align-items:center;justify-content:center;flex:none}
+  .dva-thread .seal svg{width:14px;height:14px}
+  .dva-thread .t{font-size:12px;color:var(--gold-d);line-height:1.4}
+  .dva-thread .t b{font-weight:700;font-variant-numeric:tabular-nums}
+  .dva-thread .t span{display:block;font-size:11px;color:#A08144}
+
+  .steps{margin-top:22px;position:relative}
+  .step{display:flex;gap:16px;padding-bottom:24px;position:relative}
+  .step:last-child{padding-bottom:0}
+  .step .rail{position:absolute;left:13px;top:30px;bottom:-2px;width:2px;background:var(--line);z-index:0}
+  .step:last-child .rail{display:none}
+  .step .rail .fill{position:absolute;inset:0 0 100% 0;background:var(--jade);transition:bottom .5s ease}
+  .step.done .rail .fill,.step.active .rail .fill{bottom:0%}
+  .dot{width:28px;height:28px;border-radius:50%;border:2px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:center;flex:none;position:relative;z-index:1;transition:.3s;color:var(--muted-2)}
+  .dot svg{width:14px;height:14px}
+  .step.active .dot{border-color:var(--jade);color:var(--jade)}
+  .step.active .dot .spin{animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .step.done .dot{background:var(--jade);border-color:var(--jade);color:#fff}
+  .step .txt{padding-top:2px;flex:1}
+  .step .txt .t{font-weight:600;font-size:14px;transition:.3s;color:var(--muted)}
+  .step.active .txt .t,.step.done .txt .t{color:var(--text)}
+  .step .txt .d{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .step .txt .stamp{font-size:11px;color:var(--jade);font-weight:600;margin-top:3px;opacity:0;transition:.3s}
+  .step.done .txt .stamp{opacity:1}
+  .dva-tag{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;color:var(--gold-d);background:var(--gold-soft);border:1px solid #E8D9B8;border-radius:99px;padding:3px 9px;margin-top:6px;opacity:0;transform:translateY(3px);transition:.4s;font-variant-numeric:tabular-nums}
+  .step.done .dva-tag,.step.active .dva-tag{opacity:1;transform:none}
+  .dva-tag svg{width:10px;height:10px}
+
+  /* operational (bank/compliance) rail */
+  .opsw{display:flex;align-items:center;gap:9px;cursor:pointer;user-select:none;font-size:12px;color:var(--muted);font-weight:600}
+  .opsw .tgl{width:34px;height:19px;border-radius:99px;background:var(--line);position:relative;transition:.2s}
+  .opsw .tgl::after{content:"";position:absolute;top:2.5px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.2s}
+  .opsw.on .tgl{background:var(--jade)}
+  .opsw.on .tgl::after{left:17px}
+  .oprow{display:none;background:#0F1C18;color:#B9C8BF;border-radius:9px;padding:11px 13px;margin-top:8px;font-size:11.5px;line-height:1.6;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .oprow b{color:#E4EDE7;font-weight:600}
+  .oprow .gold{color:#D7B36B}
+  body.opview .oprow{display:block}
+  .opnote{display:none;font-size:11.5px;color:var(--muted);background:#FBFAF6;border:1px solid var(--line);border-radius:9px;padding:11px 14px;margin-top:16px;line-height:1.55}
+  body.opview .opnote{display:block}
+
+  /* ---------- Done ---------- */
+  .done-wrap{text-align:center;padding:10px 4px}
+  .check-big{width:58px;height:58px;border-radius:50%;background:var(--jade);color:#fff;display:flex;align-items:center;justify-content:center;margin:6px auto 18px;box-shadow:0 8px 24px rgba(21,121,91,.35)}
+  .check-big svg{width:26px;height:26px}
+  .done-wrap h2{font-family:Fraunces;font-weight:500;font-size:24px;letter-spacing:-.01em;margin-bottom:6px}
+  .done-wrap p{color:var(--muted);font-size:14px}
+  .receipt{background:#FBFAF6;border:1px solid var(--line);border-radius:11px;padding:6px 16px;margin:20px 0}
+  .rln{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line-2);font-size:13px}
+  .rln:last-child{border-bottom:none}
+  .rln .k{color:var(--muted)}
+  .rln .v{font-weight:600}
+  .done-actions{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+
+  .demohint{position:fixed;right:18px;bottom:16px;background:var(--ink);color:#C9D4CD;font-size:11px;padding:7px 12px;border-radius:99px;display:flex;align-items:center;gap:7px;letter-spacing:.03em;box-shadow:var(--shadow-lg);z-index:40}
+  .demohint .d{width:6px;height:6px;border-radius:50%;background:var(--gold)}
+  .skip{font-size:11.5px;color:var(--muted);text-decoration:underline;cursor:pointer;background:none;border:none;padding:0}
+
+  @media (max-width:900px){
+    .app{grid-template-columns:1fr}
+    .side{position:relative;height:auto;flex-direction:row;align-items:center;justify-content:space-between;padding:14px 18px}
+    .nav,.side .foot{display:none}
+    .main{padding:22px 18px 60px}
+    .grid{grid-template-columns:1fr}
+    .stats{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none!important;transition:none!important}
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<div id="login">
+  <div class="login-card">
+    <div class="login-brand"><span class="mark">hibi</span><span class="dot"></span></div>
+    <div class="login-sub">Business payments across borders</div>
+    <label>Work email</label>
+    <input class="inp" type="email" value="ops@amantrading.com.my" />
+    <label>Password</label>
+    <input class="inp" type="password" value="••••••••••" />
+    <button class="btn btn-primary" onclick="doLogin()">Sign in</button>
+    <div class="login-foot">Protected by institutional-grade security · Labuan IBFC</div>
+  </div>
+  <div class="demo-chip">Demonstration environment — no live funds move</div>
+</div>
+
+<!-- ================= APP ================= -->
+<div class="app" id="app" style="visibility:hidden">
+  <aside class="side">
+    <div class="brand"><span class="mark">hibi</span><span class="dot"></span></div>
+    <nav class="nav">
+      <a class="on" id="nav-dash" onclick="nav('dash')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Dashboard</a>
+      <a id="nav-new" onclick="nav('new')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>New payment</a>
+      <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M21 21v-2a4 4 0 0 0-3-3.87"/></svg>Recipients</a>
+      <a><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Statements</a>
+    </nav>
+    <div class="foot">
+      <div class="acct">
+        <div class="av">AT</div>
+        <div><div class="nm">Aman Trading Sdn Bhd</div><div class="rl">Verified business</div></div>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div class="crumb" id="crumb">Home / <b>Dashboard</b></div>
+      <span class="badge"><span class="pulse"></span>Corridors live · MY → SG · ID · AE</span>
+    </div>
+
+    <!-- SCREEN: DASHBOARD -->
+    <section class="screen on" id="s-dash">
+      <h1 class="page">Good afternoon, Aman Trading</h1>
+      <div class="page-sub">Your cross-border payments at a glance.</div>
+      <div class="stats">
+        <div class="stat"><div class="k">Sent this month</div><div class="v tnum" id="st-vol">RM 0</div><div class="s" id="st-count">0 payments</div></div>
+        <div class="stat"><div class="k">Average delivery</div><div class="v">29 min</div><div class="s">vs 2–3 days by bank wire</div></div>
+        <div class="stat"><div class="k">All-in fee</div><div class="v">0.5%</div><div class="s">No hidden FX margin</div></div>
+      </div>
+      <div class="card">
+        <div class="hd"><span class="ix">↗</span>Recent payments
+          <button class="btn btn-primary wauto" style="margin-left:auto;padding:9px 16px;font-size:13px" onclick="nav('new')">New payment</button>
+        </div>
+        <div id="hist-wrap"></div>
+      </div>
+    </section>
+
+    <!-- SCREEN: NEW PAYMENT -->
+    <section class="screen" id="s-new">
+      <h1 class="page">Send a payment</h1>
+      <div class="page-sub">Pay overseas suppliers from your Ringgit account. They receive local currency.</div>
+      <div class="grid">
+        <div class="card">
+          <div class="hd"><span class="ix">1</span>Recipient & amount</div>
+          <div class="bd">
+            <div class="field"><label>Recipient business</label><input class="inp" id="f-name" value="Pioneer Components Pte Ltd"/></div>
+            <div class="row2">
+              <div class="field"><label>Destination</label>
+                <select class="sel" id="f-country" onchange="syncCountry()">
+                  <option value="SG" selected>Singapore</option>
+                  <option value="ID">Indonesia</option>
+                  <option value="AE">United Arab Emirates</option>
+                </select>
+              </div>
+              <div class="field"><label>Recipient bank</label><input class="inp" id="f-bank" value="DBS Bank" readonly/></div>
+            </div>
+            <div class="field"><label>Account number</label><input class="inp" id="f-acct" value="072-114532-8"/></div>
+            <div class="row2">
+              <div class="field"><label>You send</label>
+                <div class="amt-wrap"><span class="cur">RM</span><input class="inp tnum" id="f-amt" value="100,000" oninput="onAmt()"/></div>
+              </div>
+              <div class="field"><label>Invoice reference</label><input class="inp" id="f-inv" value="INV-2026-0418"/></div>
+            </div>
+            <button class="btn btn-primary" onclick="goQuote()">Review payment<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="hd"><span class="ix">≈</span>Estimate</div>
+          <div class="bd">
+            <div class="recv-lbl">RECIPIENT GETS</div>
+            <div class="quote-amt"><span class="c" id="e-cur">SGD</span><span class="tnum" id="e-recv">29,850</span></div>
+            <div style="margin-top:16px">
+              <div class="ln"><span class="k">You send</span><span class="v tnum">RM <span id="e-send">100,000</span></span></div>
+              <div class="ln"><span class="k">Our fee (0.5%)</span><span class="v tnum">RM <span id="e-fee">500</span></span></div>
+              <div class="ln"><span class="k">Rate</span><span class="v"><span class="rate-pill"><span id="e-pair">MYR/SGD</span> <span class="tnum" id="e-rate">3.3500</span></span></span></div>
+              <div class="ln"><span class="k">Delivery</span><span class="v">~30 minutes</span></div>
+            </div>
+            <div class="compare">
+              <div class="them"><div class="h">Bank wire</div><div class="big">2–3 days</div><div class="s">~3% all-in + SWIFT fees</div></div>
+              <div class="us"><div class="h">Hibi</div><div class="big">~30 min</div><div class="s">0.5% flat, rate shown upfront</div></div>
+            </div>
+            <div class="micro">Funds are safeguarded in a regulated trust account until delivery is confirmed.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN: QUOTE -->
+    <section class="screen" id="s-quote">
+      <h1 class="page">Review & confirm</h1>
+      <div class="page-sub">Your rate is locked while you review.</div>
+      <div class="card" style="max-width:560px">
+        <div class="bd">
+          <div class="recv-lbl">RECIPIENT GETS</div>
+          <div class="quote-amt"><span class="c" id="q-cur">SGD</span><span class="tnum" id="q-recv">29,850</span></div>
+          <div style="margin:18px 0 4px">
+            <div class="ln"><span class="k">Recipient</span><span class="v" id="q-name">Pioneer Components Pte Ltd</span></div>
+            <div class="ln"><span class="k">Bank</span><span class="v" id="q-bank">DBS Bank · Singapore</span></div>
+            <div class="ln"><span class="k">Account</span><span class="v tnum" id="q-acct">072-114532-8</span></div>
+            <div class="ln"><span class="k">Invoice</span><span class="v" id="q-inv">INV-2026-0418</span></div>
+            <div class="ln"><span class="k">You send</span><span class="v tnum">RM <span id="q-send">100,000</span></span></div>
+            <div class="ln"><span class="k">Fee (0.5%)</span><span class="v tnum">RM <span id="q-fee">500</span></span></div>
+            <div class="ln"><span class="k">Rate lock</span><span class="v"><span class="rate-pill">⏱ <span class="tnum" id="clock">15:00</span></span></span></div>
+          </div>
+          <div class="allin"><span class="k">Total debit from your account</span><span class="v tnum">RM <span id="q-total">100,000</span></span></div>
+          <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:11px;margin-top:18px">
+            <button class="btn btn-ghost" onclick="show('s-new')">Back</button>
+            <button class="btn btn-primary" onclick="goTrack()">Confirm & send</button>
+          </div>
+          <div class="micro">By confirming you authorise Hibi to execute this payment under your Payment Services Agreement.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN: TRACKING -->
+    <section class="screen" id="s-track">
+      <h1 class="page">Payment in progress</h1>
+      <div class="page-sub">Delivery typically completes within 30 minutes.</div>
+      <div class="card" style="max-width:640px">
+        <div class="bd">
+          <div class="track-head">
+            <div>
+              <div class="track-amt tnum"><span id="t-cur">SGD</span> <span id="t-recv">29,850</span></div>
+              <div class="track-meta">to Pioneer Components Pte Ltd · <span id="t-inv">INV-2026-0418</span></div>
+            </div>
+            <div class="eta"><div class="big" id="t-eta">~29 min</div><div class="lbl">Estimated</div></div>
+          </div>
+
+          <!-- The DVA thread — signature element -->
+          <div class="dva-thread">
+            <div class="seal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 2l7 4v6c0 5-3.5 8.5-7 10-3.5-1.5-7-5-7-10V6z"/></svg></div>
+            <div class="t"><b id="dva-ref">Reference HIBI-DVA-00417</b> · Aman Trading Sdn Bhd (verified originator)<span>This reference travels with your payment through every step — your identity is never separated from your money.</span></div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;margin-top:14px">
+            <div class="opsw" id="opsw" onclick="toggleOp()"><span>Operational view</span><span class="tgl"></span></div>
+          </div>
+
+          <div class="steps" id="steps">
+            <div class="step">
+              <div class="rail"><div class="fill"></div></div>
+              <div class="dot"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="display:none"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg></div>
+              <div class="txt">
+                <div class="t">Payment instruction received</div>
+                <div class="d">Your order is confirmed and queued for processing.</div>
+                <div class="stamp" data-stamp></div>
+                <div class="dva-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg><span class="dvaref">HIBI-DVA-00417</span></div>
+                <div class="oprow"><b>Hibi Technology Sdn Bhd</b> · orchestration layer · order <span class="gold">ORD-88213</span> created · merchant KYB profile attached</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="rail"><div class="fill"></div></div>
+              <div class="dot"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="display:none"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg></div>
+              <div class="txt">
+                <div class="t">Funds safeguarded in trust</div>
+                <div class="d">Your Ringgit is held in your named trust sub-account.</div>
+                <div class="stamp" data-stamp></div>
+                <div class="dva-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg><span class="dvaref">HIBI-DVA-00417</span></div>
+                <div class="oprow"><b>PTB (trustee/custodian)</b> · MYR credited to merchant-specific DVA sub-account · beneficial interest retained by merchant · sub-acct <span class="gold">DVA-00417</span></div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="rail"><div class="fill"></div></div>
+              <div class="dot"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="display:none"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg></div>
+              <div class="txt">
+                <div class="t">Currency converted</div>
+                <div class="d">Your Ringgit is exchanged at the locked rate.</div>
+                <div class="stamp" data-stamp></div>
+                <div class="dva-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg><span class="dvaref">HIBI-DVA-00417</span></div>
+                <div class="oprow"><b>Correspondent bank (Labuan)</b> · MYR→USD conversion · DVA originator reference embedded in payment message · <span class="gold">integration activates with banking partner — sandbox pending</span></div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="rail"><div class="fill"></div></div>
+              <div class="dot"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="display:none"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg></div>
+              <div class="txt">
+                <div class="t">International settlement</div>
+                <div class="d">Value moves to the destination through Hibi's settlement network.</div>
+                <div class="stamp" data-stamp></div>
+                <div class="dva-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg><span class="dvaref">HIBI-DVA-00417</span></div>
+                <div class="oprow"><b>Hibi Labuan Ltd</b> · USDC settlement leg on Arbitrum · Travel Rule payload {originator: Aman Trading Sdn Bhd, ref: <span class="gold">DVA-00417</span>, beneficiary: Pioneer Components Pte Ltd} · tx <span class="gold" id="op-tx">simulated</span></div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="rail"><div class="fill"></div></div>
+              <div class="dot"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="display:none"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg></div>
+              <div class="txt">
+                <div class="t">Local payout prepared</div>
+                <div class="d">Converted to <span class="t-curname">Singapore dollars</span> with our licensed payout partner.</div>
+                <div class="stamp" data-stamp></div>
+                <div class="dva-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg><span class="dvaref">HIBI-DVA-00417</span></div>
+                <div class="oprow"><b>Licensed payout partner (MPI)</b> · USDC→local fiat · originator reference passed to receiving bank in final credit instruction · look-through satisfied ✓ · <span class="gold" id="op-payout">payout: simulated</span></div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="rail"><div class="fill"></div></div>
+              <div class="dot"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="display:none"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg></div>
+              <div class="txt">
+                <div class="t">Delivered to recipient</div>
+                <div class="d">Funds credited to the recipient's bank account.</div>
+                <div class="stamp" data-stamp></div>
+                <div class="dva-tag"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg><span class="dvaref">HIBI-DVA-00417</span></div>
+                <div class="oprow"><b>Recipient bank</b> · SGD credit posted · originator verifiable end-to-end · settlement complete</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="opnote">Operational view: entity-level detail for compliance and banking partners. The value leg settles on-chain via USDC — invisible to the merchant, who experiences a banking-style transfer. The DVA originator reference is embedded at first deposit and carried through every hop for FATF Travel Rule compliance.</div>
+
+          <div style="display:flex;justify-content:center;margin-top:18px">
+            <button class="skip" onclick="skipAnim()">Skip animation</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCREEN: DONE -->
+    <section class="screen" id="s-done">
+      <div class="card" style="max-width:520px;margin:0 auto">
+        <div class="bd">
+          <div class="done-wrap">
+            <div class="check-big"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M20 6 9 17l-5-5"/></svg></div>
+            <h2>Payment delivered</h2>
+            <p><span id="d-cur">SGD</span> <span id="d-recv" class="tnum">29,850</span> reached <span id="d-name">Pioneer Components Pte Ltd</span>.</p>
+            <div class="receipt">
+              <div class="rln"><span class="k">Reference</span><span class="v tnum" id="d-ref">HIBI-DVA-00417</span></div>
+              <div class="rln"><span class="k">Invoice</span><span class="v" id="d-inv">INV-2026-0418</span></div>
+              <div class="rln"><span class="k">You paid</span><span class="v tnum">RM <span id="d-send">100,000</span></span></div>
+              <div class="rln"><span class="k">Delivered</span><span class="v tnum"><span id="d-cur2">SGD</span> <span id="d-recv2">29,850</span></span></div>
+              <div class="rln"><span class="k">Total time</span><span class="v" id="d-time">29 minutes</span></div>
+            </div>
+            <div class="done-actions">
+              <button class="btn btn-ghost" onclick="window.print()">Download receipt</button>
+              <button class="btn btn-primary" onclick="resetFlow()">New payment</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div class="demohint"><span class="d"></span>Prototype · no live funds move</div>
+
+<script>
+  // ---------- state ----------
+  const RATES = { SG:{cur:'SGD',curName:'Singapore dollars',rate:0.2985,bank:'DBS Bank',pair:'MYR/SGD',disp:'0.2985',label:'Singapore'},
+                  ID:{cur:'IDR',curName:'Indonesian rupiah',rate:3650,bank:'Bank Mandiri',pair:'MYR/IDR',disp:'3,650',label:'Indonesia'},
+                  AE:{cur:'AED',curName:'UAE dirhams',rate:0.835,bank:'Emirates NBD',pair:'MYR/AED',disp:'0.8350',label:'United Arab Emirates'} };
+  const fmt = n => n.toLocaleString('en-US',{maximumFractionDigits:0});
+  const parse = s => parseFloat((s||'').replace(/[^0-9.]/g,''))||0;
+  let currentDva = '';
+
+  // ---------- history (localStorage) ----------
+  const seedHistory = [
+    {ref:'HIBI-DVA-00389',date:'28 Jun 2026',name:'Pioneer Components Pte Ltd',inv:'INV-2026-0402',sent:75000,recv:22350,cur:'SGD',mins:27},
+    {ref:'HIBI-DVA-00374',date:'21 Jun 2026',name:'PT Nusantara Baja',inv:'INV-2026-0391',sent:120000,recv:436540000,cur:'IDR',mins:31},
+    {ref:'HIBI-DVA-00361',date:'14 Jun 2026',name:'Gulf Fasteners Trading LLC',inv:'INV-2026-0377',sent:58000,recv:48250,cur:'AED',mins:26},
+  ];
+  function getHistory(){
+    try{ const h = JSON.parse(localStorage.getItem('hibi_history')||'null'); return Array.isArray(h)?h:null; }catch(e){ return null; }
+  }
+  function saveHistory(h){ try{ localStorage.setItem('hibi_history',JSON.stringify(h)); }catch(e){} }
+  function ensureHistory(){ let h=getHistory(); if(!h){ h=seedHistory; saveHistory(h);} return h; }
+
+  function renderHistory(){
+    const h = ensureHistory();
+    const wrap = document.getElementById('hist-wrap');
+    if(!h.length){ wrap.innerHTML = '<div class="empty"><b>No payments yet</b>Send your first cross-border payment in under a minute.</div>'; return; }
+    let vol=0;
+    let rows = h.map(p=>{ vol+=p.sent; return `
+      <tr class="row">
+        <td><b>${p.name}</b><div style="font-size:11.5px;color:var(--muted)">${p.inv} · ${p.date}</div></td>
+        <td class="tnum">RM ${fmt(p.sent)}</td>
+        <td class="tnum">${p.cur} ${fmt(p.recv)}</td>
+        <td class="tnum" style="color:var(--muted)">${p.mins} min</td>
+        <td><span class="pill ok"><span class="tick"></span>Delivered</span></td>
+      </tr>`; }).join('');
+    wrap.innerHTML = `<table class="hist">
+      <thead><tr><th>Recipient</th><th>You sent</th><th>Delivered</th><th>Time</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody></table>`;
+    document.getElementById('st-vol').textContent = 'RM ' + fmt(vol);
+    document.getElementById('st-count').textContent = h.length + ' payment' + (h.length===1?'':'s');
+  }
+
+  // ---------- login / nav ----------
+  function doLogin(){
+    document.getElementById('login').classList.add('gone');
+    document.getElementById('app').style.visibility='visible';
+    renderHistory();
+  }
+  function nav(where){
+    document.getElementById('nav-dash').classList.toggle('on', where==='dash');
+    document.getElementById('nav-new').classList.toggle('on', where==='new');
+    document.getElementById('crumb').innerHTML = where==='dash' ? 'Home / <b>Dashboard</b>' : 'Home / <b>New payment</b>';
+    if(where==='dash'){ renderHistory(); show('s-dash'); } else { show('s-new'); refreshEstimate(); }
+  }
+  function show(id){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+    document.getElementById(id).classList.add('on');
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+
+  // ---------- estimate ----------
+  function calc(){
+    const c = document.getElementById('f-country').value;
+    const r = RATES[c];
+    const send = parse(document.getElementById('f-amt').value);
+    const fee = Math.round(send*0.005);
+    const recv = Math.round((send-fee)*r.rate);
+    return {c,r,send,fee,recv};
+  }
+  function onAmt(){
+    const el=document.getElementById('f-amt');
+    const v=parse(el.value); el.value=v?fmt(v):'';
+    refreshEstimate();
+  }
+  function syncCountry(){
+    const c=document.getElementById('f-country').value;
+    document.getElementById('f-bank').value=RATES[c].bank;
+    refreshEstimate();
+  }
+  function refreshEstimate(){
+    const {r,send,fee,recv}=calc();
+    document.getElementById('e-cur').textContent=r.cur;
+    document.getElementById('e-recv').textContent=fmt(recv);
+    document.getElementById('e-send').textContent=fmt(send);
+    document.getElementById('e-fee').textContent=fmt(fee);
+    document.getElementById('e-rate').textContent=r.disp;
+    document.getElementById('e-pair').textContent=r.pair+(RATES_LIVE?' · live':'');
+  }
+
+  // ---------- quote ----------
+  let clockTimer=null;
+  function goQuote(){
+    const {r,send,fee,recv}=calc();
+    if(!send){ document.getElementById('f-amt').focus(); return; }
+    document.getElementById('q-name').textContent=document.getElementById('f-name').value||'—';
+    document.getElementById('q-bank').textContent=r.bank+' · '+r.label;
+    document.getElementById('q-acct').textContent=document.getElementById('f-acct').value||'—';
+    document.getElementById('q-inv').textContent=document.getElementById('f-inv').value||'—';
+    document.getElementById('q-send').textContent=fmt(send);
+    document.getElementById('q-fee').textContent=fmt(fee);
+    document.getElementById('q-cur').textContent=r.cur;
+    document.getElementById('q-recv').textContent=fmt(recv);
+    document.getElementById('q-total').textContent=fmt(send);
+    show('s-quote');
+    startClock();
+  }
+  function startClock(){
+    clearInterval(clockTimer);
+    let t=15*60-1;
+    const el=document.getElementById('clock');
+    el.textContent='15:00';
+    clockTimer=setInterval(()=>{
+      const m=String(Math.floor(t/60)).padStart(2,'0'), s=String(t%60).padStart(2,'0');
+      el.textContent=m+':'+s; t--; if(t<0){clearInterval(clockTimer);}
+    },1000);
+  }
+
+  // ---------- tracking ----------
+  let stepTimers=[];
+  function newDvaRef(){
+    const n = 400 + Math.floor(Math.random()*580);
+    return 'HIBI-DVA-'+String(n).padStart(5,'0');
+  }
+  function goTrack(){
+    clearInterval(clockTimer);
+    const {r,send,recv}=calc();
+    currentDva = newDvaRef();
+    document.getElementById('dva-ref').textContent = 'Reference ' + currentDva;
+    document.querySelectorAll('.dvaref').forEach(el=>el.textContent=currentDva);
+    document.getElementById('t-recv').textContent=fmt(recv);
+    document.getElementById('t-cur').textContent=r.cur;
+    document.getElementById('t-inv').textContent=document.getElementById('f-inv').value||'—';
+    document.querySelectorAll('.t-curname').forEach(el=>el.textContent=r.curName);
+    // reset steps
+    document.querySelectorAll('#steps .step').forEach(s=>{
+      s.classList.remove('done','active');
+      s.querySelector('.tick').style.display='';
+      s.querySelector('.spin').style.display='none';
+      s.querySelector('[data-stamp]').textContent='';
+    });
+    document.getElementById('t-eta').textContent='~29 min';
+    show('s-track');
+    wireTestnetTx();
+    wireSandboxPayout(recv, r.cur);
+    runSteps();
+  }
+  const STAGE_ETAS = ['~26 min','~22 min','~15 min','~8 min','~2 min','Delivered'];
+  function stampNow(offsetMin){
+    const d = new Date(Date.now()+offsetMin*60000);
+    return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  }
+  function runSteps(){
+    stepTimers.forEach(clearTimeout); stepTimers=[];
+    const steps=[...document.querySelectorAll('#steps .step')];
+    let i=0;
+    const activate=(s)=>{ s.classList.add('active'); s.querySelector('.tick').style.display='none'; s.querySelector('.spin').style.display=''; };
+    const complete=(s,idx)=>{ s.classList.remove('active'); s.classList.add('done'); s.querySelector('.spin').style.display='none'; s.querySelector('.tick').style.display=''; s.querySelector('[data-stamp]').textContent='Completed · '+stampNow(0); document.getElementById('t-eta').textContent=STAGE_ETAS[idx]; };
+    activate(steps[0]);
+    const advance=()=>{
+      complete(steps[i],i);
+      i++;
+      if(i<steps.length){ activate(steps[i]); stepTimers.push(setTimeout(advance,1900)); }
+      else { stepTimers.push(setTimeout(finish,1000)); }
+    };
+    stepTimers.push(setTimeout(advance,1700));
+  }
+  function skipAnim(){
+    stepTimers.forEach(clearTimeout); stepTimers=[];
+    const steps=[...document.querySelectorAll('#steps .step')];
+    steps.forEach((s,idx)=>{ s.classList.remove('active'); s.classList.add('done'); s.querySelector('.spin').style.display='none'; s.querySelector('.tick').style.display=''; s.querySelector('[data-stamp]').textContent='Completed · '+stampNow(0); });
+    document.getElementById('t-eta').textContent='Delivered';
+    setTimeout(finish,400);
+  }
+  function finish(){
+    const {r,send,recv}=calc();
+    const name = document.getElementById('f-name').value||'Recipient';
+    const inv = document.getElementById('f-inv').value||'—';
+    const mins = 24 + Math.floor(Math.random()*9);
+    ['d-recv','d-recv2'].forEach(id=>document.getElementById(id).textContent=fmt(recv));
+    ['d-cur','d-cur2'].forEach(id=>document.getElementById(id).textContent=r.cur);
+    document.getElementById('d-send').textContent=fmt(send);
+    document.getElementById('d-name').textContent=name;
+    document.getElementById('d-inv').textContent=inv;
+    document.getElementById('d-ref').textContent=currentDva;
+    document.getElementById('d-time').textContent=mins+' minutes';
+    // save to history
+    const h = ensureHistory();
+    h.unshift({ref:currentDva,date:new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}),name,inv,sent:send,recv,cur:r.cur,mins});
+    saveHistory(h);
+    show('s-done');
+  }
+
+  function toggleOp(){
+    document.getElementById('opsw').classList.toggle('on');
+    document.body.classList.toggle('opview');
+  }
+  function resetFlow(){
+    document.getElementById('f-amt').value='100,000';
+    refreshEstimate();
+    nav('dash');
+  }
+
+  // ---------- INTEGRATIONS (all fail silently to mock — demo never breaks) ----------
+
+  // Rung 1: live FX via Frankfurter (ECB reference rates), AED derived from USD peg
+  let RATES_LIVE = false;
+  (async function liveRates(){
+    try{
+      const res = await fetch('https://api.frankfurter.app/latest?from=MYR&to=SGD,IDR,USD');
+      if(!res.ok) return;
+      const d = await res.json();
+      if(d && d.rates){
+        if(d.rates.SGD){ RATES.SG.rate=d.rates.SGD; RATES.SG.disp=d.rates.SGD.toFixed(4); }
+        if(d.rates.IDR){ RATES.ID.rate=d.rates.IDR; RATES.ID.disp=Math.round(d.rates.IDR).toLocaleString('en-US'); }
+        if(d.rates.USD){ const aed=d.rates.USD*3.6725; RATES.AE.rate=aed; RATES.AE.disp=aed.toFixed(4); }
+        RATES_LIVE = true;
+        refreshEstimate();
+      }
+    }catch(e){ /* offline or blocked — static rates remain */ }
+  })();
+
+  // Rung 2 (upgraded): LIVE per-run on-chain settlement.
+  // When the user confirms a payment, a REAL Arbitrum Sepolia transaction is
+  // broadcast via the settle function (testnet — valueless but genuine).
+  // Fallbacks: a static pre-made tx (SEPOLIA_TX) → "simulated". Never breaks.
+  const SEPOLIA_TX = '';   // optional fallback: paste a pre-made tx hash
+  const SEPOLIA_RPC = 'https://sepolia-rollup.arbitrum.io/rpc';
+  function showTx(hash, meta){
+    const short = hash.slice(0,8)+'…'+hash.slice(-4);
+    document.getElementById('op-tx').innerHTML =
+      '<a href="https://sepolia.arbiscan.io/tx/'+hash+'" target="_blank" rel="noopener" style="color:#D7B36B;text-decoration:underline">'+short+' ↗</a>'+(meta||'');
+  }
+  async function getBlock(hash){
+    try{
+      const res = await fetch(SEPOLIA_RPC,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id:1,method:'eth_getTransactionReceipt',params:[hash]})});
+      const d = await res.json();
+      return (d && d.result && d.result.blockNumber) ? parseInt(d.result.blockNumber,16) : null;
+    }catch(e){ return null; }
+  }
+  async function wireTestnetTx(){
+    const el = document.getElementById('op-tx');
+    // 1) Try a LIVE settlement fired for this specific run
+    try{
+      el.textContent='broadcasting settlement…';
+      const res = await fetch('/.netlify/functions/settle',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({reference:currentDva})});
+      if(res.ok){
+        const d = await res.json();
+        if(d.hash){
+          showTx(d.hash,' · broadcast — awaiting confirmation…');
+          for(let i=0;i<20;i++){
+            await new Promise(r=>setTimeout(r,3000));
+            const bn = await getBlock(d.hash);
+            if(bn){ showTx(d.hash,' · block '+bn.toLocaleString()+' · settled LIVE this run (testnet)'); return; }
+          }
+          showTx(d.hash,' · pending (testnet)');
+          return;
+        }
+      }
+    }catch(e){ /* fall through */ }
+    // 2) Fallback: static pre-made real tx
+    if(SEPOLIA_TX){
+      showTx(SEPOLIA_TX,'');
+      const bn = await getBlock(SEPOLIA_TX);
+      if(bn){ showTx(SEPOLIA_TX,' · block '+bn.toLocaleString()+' · confirmed (testnet)'); }
+      return;
+    }
+    // 3) Last resort
+    el.textContent='simulated';
+  }
+
+  // Rung 3: StraitsX sandbox payout via Netlify Function (key stays server-side).
+  // Falls back to "simulated" if the function or key isn't deployed yet.
+  async function wireSandboxPayout(recvAmt, cur){
+    const el = document.getElementById('op-payout');
+    el.textContent = 'payout: requesting sandbox…';
+    try{
+      const res = await fetch('/.netlify/functions/payout',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({amount:recvAmt,currency:cur,reference:currentDva})});
+      if(!res.ok) throw new Error();
+      const d = await res.json();
+      el.textContent = 'payout: '+(d.payout_id||'accepted')+' (sandbox)';
+    }catch(e){ el.textContent = 'payout: simulated (sandbox offline)'; }
+  }
+
+  // Call this LAST — after every let/const above has been declared —
+  // so nothing throws a temporal-dead-zone error and halts the script.
+  refreshEstimate();
+</script>
+</body>
+</html>

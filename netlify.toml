@@ -1,0 +1,11 @@
+# Deploys the static demo and the serverless function together.
+# Repo layout:
+#   index.html                        (rename hibi_demo.html to this)
+#   netlify.toml
+#   netlify/functions/straitsx-payout.js
+
+[build]
+  publish = "."
+
+[functions]
+  directory = "netlify/functions"
