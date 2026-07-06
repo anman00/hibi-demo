@@ -606,7 +606,6 @@
   }
 
   // ---------- tracking ----------
-  let stepTimers=[];
   function newDvaRef(){
     const n = 400 + Math.floor(Math.random()*580);
     return 'HIBI-DVA-'+String(n).padStart(5,'0');
@@ -630,7 +629,7 @@
     });
     document.getElementById('t-eta').textContent='~29 min';
     show('s-track');
-    wireTestnetTx();
+    window._settlePromise = wireTestnetTx();   // stage 4 gates on this real settlement
     wireSandboxPayout(recv, r.cur);
     runSteps();
   }
@@ -639,25 +638,38 @@
     const d = new Date(Date.now()+offsetMin*60000);
     return d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
   }
-  function runSteps(){
-    stepTimers.forEach(clearTimeout); stepTimers=[];
+  const sleep = ms => new Promise(r=>setTimeout(r,ms));
+  let runId = 0;
+  function activateStep(s){ s.classList.add('active'); s.querySelector('.tick').style.display='none'; s.querySelector('.spin').style.display=''; }
+  function completeStep(s,idx){ s.classList.remove('active'); s.classList.add('done'); s.querySelector('.spin').style.display='none'; s.querySelector('.tick').style.display=''; s.querySelector('[data-stamp]').textContent='Completed · '+stampNow(0); document.getElementById('t-eta').textContent=STAGE_ETAS[idx]; }
+  async function runSteps(){
+    const my = ++runId;
     const steps=[...document.querySelectorAll('#steps .step')];
-    let i=0;
-    const activate=(s)=>{ s.classList.add('active'); s.querySelector('.tick').style.display='none'; s.querySelector('.spin').style.display=''; };
-    const complete=(s,idx)=>{ s.classList.remove('active'); s.classList.add('done'); s.querySelector('.spin').style.display='none'; s.querySelector('.tick').style.display=''; s.querySelector('[data-stamp]').textContent='Completed · '+stampNow(0); document.getElementById('t-eta').textContent=STAGE_ETAS[idx]; };
-    activate(steps[0]);
-    const advance=()=>{
-      complete(steps[i],i);
-      i++;
-      if(i<steps.length){ activate(steps[i]); stepTimers.push(setTimeout(advance,1900)); }
-      else { stepTimers.push(setTimeout(finish,1000)); }
-    };
-    stepTimers.push(setTimeout(advance,1700));
+    // Fixed pacing for the mocked stages; stage index 3 (International
+    // settlement) GATES ON THE REAL on-chain confirmation — it will not
+    // complete until the live testnet transaction is mined (45s cap so a
+    // congested testnet can never strand a meeting).
+    const waits=[1700,1900,1900,null,1900,1600];
+    for(let i=0;i<steps.length;i++){
+      if(my!==runId) return;                 // a newer run or skip cancelled us
+      activateStep(steps[i]);
+      if(waits[i]===null){
+        await Promise.race([window._settlePromise||sleep(1900), sleep(45000)]);
+        if(my!==runId) return;
+        await sleep(500);                    // let the confirmed tx register visually
+      } else {
+        await sleep(waits[i]);
+      }
+      if(my!==runId) return;
+      completeStep(steps[i],i);
+    }
+    await sleep(800);
+    if(my===runId) finish();
   }
   function skipAnim(){
-    stepTimers.forEach(clearTimeout); stepTimers=[];
+    runId++;                                  // cancel any in-flight run loop
     const steps=[...document.querySelectorAll('#steps .step')];
-    steps.forEach((s,idx)=>{ s.classList.remove('active'); s.classList.add('done'); s.querySelector('.spin').style.display='none'; s.querySelector('.tick').style.display=''; s.querySelector('[data-stamp]').textContent='Completed · '+stampNow(0); });
+    steps.forEach((s)=>{ s.classList.remove('active'); s.classList.add('done'); s.querySelector('.spin').style.display='none'; s.querySelector('.tick').style.display=''; s.querySelector('[data-stamp]').textContent='Completed · '+stampNow(0); });
     document.getElementById('t-eta').textContent='Delivered';
     setTimeout(finish,400);
   }
