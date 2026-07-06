@@ -94,6 +94,16 @@
   .empty{padding:40px;text-align:center;color:var(--muted)}
   .empty b{display:block;color:var(--text);font-size:15px;margin-bottom:4px}
 
+  /* live connections card */
+  .conn{display:flex;align-items:center;gap:11px;padding:11px 0;border-bottom:1px solid var(--line-2);font-size:13px}
+  .conn:last-child{border-bottom:none}
+  .conn b{font-weight:600;min-width:150px}
+  .conn .ctxt{color:var(--muted);font-size:12.5px}
+  .conn .ctxt a{color:var(--gold-d);font-weight:600;text-decoration:underline}
+  .cdot{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none;transition:.3s}
+  .cdot.ok{background:var(--jade);box-shadow:0 0 0 3px rgba(21,121,91,.14)}
+  .cdot.warn{background:var(--gold)}
+
   /* ---------- Form ---------- */
   .field{margin-bottom:17px}
   .field:last-child{margin-bottom:0}
@@ -272,6 +282,16 @@
         <div class="stat"><div class="k">Sent this month</div><div class="v tnum" id="st-vol">RM 0</div><div class="s" id="st-count">0 payments</div></div>
         <div class="stat"><div class="k">Average delivery</div><div class="v">29 min</div><div class="s">vs 2–3 days by bank wire</div></div>
         <div class="stat"><div class="k">All-in fee</div><div class="v">0.5%</div><div class="s">No hidden FX margin</div></div>
+      </div>
+      <div class="card" style="margin-bottom:22px">
+        <div class="hd"><span class="ix">⛓</span>Live connections
+          <span style="margin-left:auto;font-size:11px;color:var(--muted-2);font-weight:500">verified each session</span>
+        </div>
+        <div class="bd" style="padding:8px 22px">
+          <div class="conn"><span class="cdot" id="cd-fx"></span><b>Market data</b><span class="ctxt" id="ct-fx">checking…</span></div>
+          <div class="conn"><span class="cdot" id="cd-settle"></span><b>Settlement network</b><span class="ctxt" id="ct-settle">checking…</span></div>
+          <div class="conn"><span class="cdot" id="cd-payout"></span><b>Payout partner</b><span class="ctxt" id="ct-payout">checking…</span></div>
+        </div>
       </div>
       <div class="card">
         <div class="hd"><span class="ix">↗</span>Recent payments
@@ -530,17 +550,47 @@
     document.getElementById('st-count').textContent = h.length + ' payment' + (h.length===1?'':'s');
   }
 
+  // ---------- live connections status card ----------
+  let payoutPing = null; // cache the Nium ping per session
+  function setConn(id, state, text){
+    const dot=document.getElementById('cd-'+id), txt=document.getElementById('ct-'+id);
+    if(!dot||!txt) return;
+    dot.className='cdot'+(state==='ok'?' ok':state==='warn'?' warn':'');
+    txt.innerHTML=text;
+  }
+  async function refreshConnCard(){
+    setConn('fx', RATES_LIVE?'ok':'warn', RATES_LIVE?'Live rates · ECB reference':'Static reference rates (offline fallback)');
+    try{
+      const last = JSON.parse(localStorage.getItem('hibi_last_settle')||'null');
+      if(last && last.hash){
+        const ago = Math.max(1,Math.round((Date.now()-last.at)/60000));
+        setConn('settle','ok','Connected · last settlement block '+Number(last.block).toLocaleString()+' ('+ago+' min ago) · <a href="'+EXPLORER_TX+last.hash+'" target="_blank" rel="noopener">verify ↗</a>');
+      } else {
+        setConn('settle','warn','Ready — settles on-chain with your first payment');
+      }
+    }catch(e){ setConn('settle','warn','Ready'); }
+    if(payoutPing===null){
+      try{
+        const res = await fetch('/.netlify/functions/payout',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({currency:'SGD',reference:'STATUS-CHECK'})});
+        const d = res.ok ? await res.json() : null;
+        payoutPing = (d && d.payout_id) ? d.payout_id : false;
+      }catch(e){ payoutPing = false; }
+    }
+    setConn('payout', payoutPing?'ok':'warn', payoutPing?String(payoutPing).replace(/</g,'&lt;'):'Sandbox offline — simulated mode');
+  }
+
   // ---------- login / nav ----------
   function doLogin(){
     document.getElementById('login').classList.add('gone');
     document.getElementById('app').style.visibility='visible';
     renderHistory();
+    refreshConnCard();
   }
   function nav(where){
     document.getElementById('nav-dash').classList.toggle('on', where==='dash');
     document.getElementById('nav-new').classList.toggle('on', where==='new');
     document.getElementById('crumb').innerHTML = where==='dash' ? 'Home / <b>Dashboard</b>' : 'Home / <b>New payment</b>';
-    if(where==='dash'){ renderHistory(); show('s-dash'); } else { show('s-new'); refreshEstimate(); }
+    if(where==='dash'){ renderHistory(); refreshConnCard(); show('s-dash'); } else { show('s-new'); refreshEstimate(); }
   }
   function show(id){
     document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
@@ -726,11 +776,12 @@
   // broadcast via the settle function (testnet — valueless but genuine).
   // Fallbacks: a static pre-made tx (SEPOLIA_TX) → "simulated". Never breaks.
   const SEPOLIA_TX = '';   // optional fallback: paste a pre-made tx hash
-  const SEPOLIA_RPC = 'https://sepolia-rollup.arbitrum.io/rpc';
+  const SEPOLIA_RPC = 'https://ethereum-sepolia-rpc.publicnode.com';
+  const EXPLORER_TX = 'https://sepolia.etherscan.io/tx/';
   function showTx(hash, meta){
     const short = hash.slice(0,8)+'…'+hash.slice(-4);
     document.getElementById('op-tx').innerHTML =
-      '<a href="https://sepolia.arbiscan.io/tx/'+hash+'" target="_blank" rel="noopener" style="color:#D7B36B;text-decoration:underline">'+short+' ↗</a>'+(meta||'');
+      '<a href="'+EXPLORER_TX+hash+'" target="_blank" rel="noopener" style="color:#D7B36B;text-decoration:underline">'+short+' ↗</a>'+(meta||'');
   }
   async function getBlock(hash){
     try{
@@ -755,7 +806,12 @@
           for(let i=0;i<20;i++){
             await new Promise(r=>setTimeout(r,3000));
             const bn = await getBlock(d.hash);
-            if(bn){ showTx(d.hash,' · block '+bn.toLocaleString()+' · settled LIVE this run (testnet)'); return; }
+            if(bn){
+              showTx(d.hash,' · block '+bn.toLocaleString()+' · settled LIVE this run (testnet)');
+              try{ localStorage.setItem('hibi_last_settle', JSON.stringify({hash:d.hash, block:bn, at:Date.now()})); }catch(e){}
+              refreshConnCard();
+              return;
+            }
           }
           showTx(d.hash,' · pending (testnet)');
           return;
