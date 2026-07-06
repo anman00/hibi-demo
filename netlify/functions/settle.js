@@ -19,7 +19,8 @@
 
 import { ethers } from "ethers";
 
-const RPC = "https://sepolia-rollup.arbitrum.io/rpc";
+//const RPC = "https://sepolia-rollup.arbitrum.io/rpc";
+const RPC = "https://ethereum-sepolia-rpc.publicnode.com";
 const ERC20_ABI = ["function transfer(address to, uint256 amount) returns (bool)", "function decimals() view returns (uint8)"];
 
 export default async (req) => {
