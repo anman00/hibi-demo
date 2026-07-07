@@ -41,7 +41,23 @@ async function nium(method, path, key, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  return { ok: res.ok, status: res.status, data };
+  return { ok: res.ok, status: res.status, data, path };
+}
+
+// Nium's gateway returns 403 "Missing Authentication Token" when a ROUTE
+// doesn't exist (AWS API Gateway behaviour) — not an auth failure. So we try
+// known path variants in order until one is a real endpoint.
+function isRouteMiss(r) {
+  return r.status === 403 && r.data && /Missing Authentication Token/i.test(r.data.message || "");
+}
+async function niumTryPaths(method, paths, key, body) {
+  let last = null;
+  for (const p of paths) {
+    const r = await nium(method, p, key, body);
+    if (!isRouteMiss(r)) return r;   // real endpoint (success OR a real validation error)
+    last = r;
+  }
+  return last;
 }
 
 export default async (req) => {
@@ -59,8 +75,13 @@ export default async (req) => {
   const log = {};
 
   // ---- 1. Create sandbox customer (individual — simplest sandbox path) ----
-  // TODO_VERIFY: exact path & required fields per your Postman collection.
-  const customer = await nium("POST", `/api/v1/client/${CLIENT}/customers`, KEY, {
+  // Tries known path variants; "Missing Authentication Token" = route miss.
+  const customer = await niumTryPaths("POST", [
+    `/api/v1/client/${CLIENT}/customer`,
+    `/api/v2/client/${CLIENT}/customer`,
+    `/api/v4/client/${CLIENT}/customer`,
+    `/api/v1/client/${CLIENT}/customers`,
+  ], KEY, {
     firstName: "Hibi",
     lastName: "DemoMerchant",
     email: `hibi.demo.${Date.now()}@example.com`,
@@ -81,9 +102,10 @@ export default async (req) => {
   const walletHashId = customer.data.walletHashId || customer.data.wallet_hash_id;
 
   // ---- 2. Fund the wallet with sandbox money (prefund simulation) ----
-  // TODO_VERIFY: sandbox funding endpoint. Common pattern:
-  const fund = await nium("POST",
-    `/api/v1/client/${CLIENT}/customer/${customerHashId}/wallet/${walletHashId}/fund`, KEY, {
+  const fund = await niumTryPaths("POST", [
+    `/api/v1/client/${CLIENT}/customer/${customerHashId}/wallet/${walletHashId}/fund`,
+    `/api/v1/client/${CLIENT}/customer/${customerHashId}/wallet/${walletHashId}/presignedFund`,
+  ], KEY, {
       amount: 10000,
       destinationCurrencyCode: "USD",
       fundingChannel: "PREFUND",
@@ -92,9 +114,11 @@ export default async (req) => {
   log.fund = fund; // non-fatal if it fails — some tenants prefund differently
 
   // ---- 3. Add beneficiary (the demo recipient) ----
-  // TODO_VERIFY: v1 vs v2 beneficiary path and field names for SG LOCAL payout.
-  const beneficiary = await nium("POST",
-    `/api/v1/client/${CLIENT}/customer/${customerHashId}/beneficiaries`, KEY, {
+  const beneficiary = await niumTryPaths("POST", [
+    `/api/v1/client/${CLIENT}/customer/${customerHashId}/beneficiaries`,
+    `/api/v2/client/${CLIENT}/customer/${customerHashId}/beneficiaries`,
+    `/api/v1/client/${CLIENT}/customer/${customerHashId}/beneficiary`,
+  ], KEY, {
       beneficiaryDetail: {
         firstName: "Pioneer",
         lastName: "Components",
