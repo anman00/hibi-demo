@@ -13,9 +13,11 @@
 // Env vars: NIUM_API_KEY, NIUM_CLIENT_HASH_ID,
 //           NIUM_CUSTOMER_HASH_ID, NIUM_WALLET_HASH_ID, NIUM_BENEFICIARY_ID
 //
-// TODO_VERIFY: remittance payload enums (purposeCode, sourceOfFunds) against
-// your tenant's docs — Nium returns descriptive field errors, passed through
-// in the response detail so first-run fixes are quick.
+// VERIFIED (7 Jul 2026): this sandbox client is SGD-ONLY (regulatoryRegion SG).
+// USD is rejected by the exchangeRate API and same-currency quotes are not
+// allowed, so full mode fires an SGD wallet → SGD local payout to the fixed
+// beneficiary (NIUM_BENEFICIARY_ID = beneficiaryHashId from nium-setup) with
+// no FX-quote step. Basic mode quotes SGD→USD purely for display.
 
 const NIUM_HOST = "https://gateway.nium.com";
 
@@ -50,29 +52,28 @@ export default async (req) => {
 
   let body = {};
   try { body = await req.json(); } catch (e) {}
-  const destCurrency = String(body.currency || "SGD").slice(0, 3).toUpperCase();
   const reference = String(body.reference || "HIBI-DVA-DEMO").slice(0, 40);
 
   try {
     // ================= FULL MODE: real sandbox remittance =================
-    if (CUSTOMER && WALLET && BENEFICIARY) {
-      // 1) Lock a live FX quote — remittance requires the auditId it returns.
-      const fx = await nium("GET",
-        `/api/v1/client/${CLIENT}/exchangeRate?sourceCurrencyCode=USD&destinationCurrencyCode=${destCurrency}`, KEY);
-      const auditId = fx.data.auditId || fx.data.audit_id || null;
-
-      // 2) Fire the remittance (fixed small sandbox amount per run).
+    // The dashboard "Live connections" card pings this function on login with
+    // reference STATUS-CHECK — that must stay read-only, not fire a payout.
+    if (CUSTOMER && WALLET && BENEFICIARY && reference !== "STATUS-CHECK") {
+      // SGD wallet → SGD local payout to the fixed sandbox beneficiary.
+      // No FX-quote step: the client is single-currency, so no pair quotes.
+      // Field names verified against the live API: payout.sourceCurrency /
+      // destinationCurrency (not *CurrencyCode); sourceOfFunds enum "Salary"
+      // ("Business Income" is rejected); purposeCode IR005 per docs example.
       const remit = await nium("POST",
         `/api/v1/client/${CLIENT}/customer/${CUSTOMER}/wallet/${WALLET}/remittance`, KEY, {
           beneficiary: { id: BENEFICIARY },
           payout: {
-            auditId: auditId,
-            sourceCurrencyCode: "USD",
-            destinationCurrencyCode: destCurrency,
+            sourceCurrency: "SGD",
+            destinationCurrency: "SGD",
             sourceAmount: 10,               // fixed sandbox amount per run
           },
-          purposeCode: "IR001",             // TODO_VERIFY enum for your tenant
-          sourceOfFunds: "Business Income", // TODO_VERIFY enum for your tenant
+          purposeCode: "IR005",
+          sourceOfFunds: "Salary",
           customerComments: `Hibi demo · ${reference}`,
         });
 
@@ -93,17 +94,9 @@ export default async (req) => {
     if (!clientRes.ok) {
       return new Response(JSON.stringify({ mode: "mock", reason: "nium auth failed", status: clientRes.status }), { status: 502 });
     }
-    let quote = null;
-    try {
-      const fxRes = await nium("GET",
-        `/api/v1/client/${CLIENT}/exchangeRate?sourceCurrencyCode=USD&destinationCurrencyCode=${destCurrency}`, KEY);
-      if (fxRes.ok) quote = fxRes.data.exchangeRate || fxRes.data.rate || null;
-    } catch (e) {}
-
+    // No FX quote: single-currency client, every pair is rejected.
     const name = clientRes.data.name ? String(clientRes.data.name).slice(0, 24) : "client";
-    const display = quote
-      ? `Nium sandbox · ${name} verified · USD/${destCurrency} ${Number(quote).toFixed(4)}`
-      : `Nium sandbox · ${name} verified`;
+    const display = `Nium sandbox · ${name} verified`;
     return new Response(JSON.stringify({ payout_id: display }), {
       status: 200, headers: { "Content-Type": "application/json" } });
 
