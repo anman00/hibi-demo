@@ -4,8 +4,8 @@
 //
 // VERIFIED FLOW (7 Jul 2026, run live against the sandbox):
 //   1. Onboard a CORPORATE customer via POST /api/v1/client/{c}/corporate
-//      using Nium's documented SG auto-approval example (businessRegistrationNumber
-//      903287424M01233 → KYB auto-approves, sandbox only).
+//      using Nium's documented SG manual-KYB example (reg 903280424) with
+//      all-MANUAL_KYC participants and an LOA doc for the signatory applicant.
 //      Individual customer creation is NOT enabled on this self-serve sandbox
 //      client ("Unable to get compliance configuration") — corporate is the way.
 //   2. Add a beneficiary via POST /api/v2/.../beneficiaries (FLAT payload,
@@ -45,23 +45,25 @@ async function nium(method, path, key, body) {
   return { ok: res.ok, status: res.status, data, path };
 }
 
-// Nium's documented SG sandbox auto-approval example (private company,
-// manual KYB): businessRegistrationNumber 903287424M01233 triggers the
-// auto-approval simulation — do not change it. The applicant kycMode is
-// flipped to MANUAL_KYC (with passport docs) because this client has no
-// ekycRedirectUrl configured, so any E_KYC participant gets stuck at the
-// MyInfo redirect forever.
+// Nium's documented SG manual-KYB public-company example (reg 903280424),
+// with two required modifications discovered live:
+//   1. All kycModes forced to MANUAL_KYC — this client has no ekycRedirectUrl,
+//      so any E_KYC participant gets stuck at the MyInfo redirect forever.
+//   2. The applicant is a SIGNATORY, so a Letter of Authorization document
+//      (documentType "LOA") is mandatory — without it the case silently
+//      stalls in review. Every documented SG example omits it.
 const CORPORATE_PAYLOAD = {
   "region": "SG",
   "businessDetails": {
     "referenceId": "6913aac9-cbd9-4783-8fd6-07ea9655dfec",
-    "businessName": "Singapore Electronics 27779",
-    "businessRegistrationNumber": "903287424M01233",
-    "website": "www.singaporeelectronics.com",
-    "businessType": "PRIVATE_COMPANY",
+    "businessName": "Singapore Special Appliances",
+    "businessRegistrationNumber": "903280424",
+    "website": "www.singaporeappliances.com",
+    "businessType": "PUBLIC_COMPANY",
     "legalDetails": {
       "registeredCountry": "SG",
-      "registeredDate": "2000-01-02"
+      "registeredDate": "2000-01-02",
+      "listedExchange": "EX080"
     },
     "addresses": {
       "registeredAddress": {
@@ -88,10 +90,9 @@ const CORPORATE_PAYLOAD = {
       {
         "referenceId": "d25c5c6f-d4b0-47a5-986e-7b50641b65fc",
         "stakeholderDetails": {
-          "firstName": "Narendra",
+          "firstName": "John",
           "middleName": "C",
-          "lastName": "Bhargav",
-          "dateOfBirth": "1982-07-17",
+          "lastName": "Grisham",
           "nationality": "IN",
           "kycMode": "MANUAL_KYC",
           "professionalDetails": [
@@ -134,16 +135,16 @@ const CORPORATE_PAYLOAD = {
             "registeredCountry": "FR"
           },
           "businessEntityType": "SHAREHOLDER",
-          "businessName": "Farto AgriTECH LIMITED",
+          "businessName": "Fiago AgriTECH LIMITED",
           "businessRegistrationNumber": "822843822"
         }
       }
     ],
     "applicantDetails": {
       "referenceId": "0c61376b-70c3-4d45-9193-0a6ddece4e0e",
-      "firstName": "Hardik",
+      "firstName": "Mitchell",
       "middleName": "",
-      "lastName": "Roshan",
+      "lastName": "Johnson",
       "dateOfBirth": "1982-07-17",
       "nationality": "SG",
       "kycMode": "MANUAL_KYC",
@@ -168,12 +169,22 @@ const CORPORATE_PAYLOAD = {
         {
           "documentType": "PASSPORT",
           "documentExpiryDate": "2029-09-10",
-          "documentIssuanceCountry": "IN",
-          "documentNumber": "098734525",
+          "documentIssuanceCountry": "SG",
+          "documentNumber": "E7654321K",
           "document": [
             {
               "document": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAABlBMVEX///+/v7+jQ3Y5AAAADklEQVQI12P4AIX8EAgALgAD/aNpbtEAAAAASUVORK5CYII",
               "fileName": "Passport.pdf",
+              "fileType": "application/pdf"
+            }
+          ]
+        },
+        {
+          "documentType": "LOA",
+          "document": [
+            {
+              "document": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAABlBMVEX///+/v7+jQ3Y5AAAADklEQVQI12P4AIX8EAgALgAD/aNpbtEAAAAASUVORK5CYII",
+              "fileName": "LOA.pdf",
               "fileType": "application/pdf"
             }
           ]
@@ -186,20 +197,19 @@ const CORPORATE_PAYLOAD = {
     }
   },
   "riskAssessmentInfo": {
+    "countryOfOperation": [
+      "HK",
+      "IN"
+    ],
+    "transactionCountries": [
+      "GB",
+      "AU",
+      "FR"
+    ],
     "totalEmployees": "EM009",
     "annualTurnover": "SG011",
     "industrySector": "IS144",
-    "intendedUseOfAccount": "IU003",
-    "countryOfOperation": [
-      "SG",
-      "US",
-      "GB"
-    ],
-    "transactionCountry": [
-      "DE",
-      "JP",
-      "IN"
-    ]
+    "intendedUseOfAccount": "IU003"
   },
   "tags": [
     {
