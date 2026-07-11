@@ -2,26 +2,28 @@
 // ONE-TIME sandbox setup. Run once, copy the returned IDs into Netlify env
 // vars, then this function is never needed again (you can even delete it).
 //
-// VERIFIED FLOW (7 Jul 2026, run live against the sandbox):
-//   1. Onboard a CORPORATE customer via POST /api/v1/client/{c}/corporate
-//      using Nium's documented SG manual-KYB example (reg 903280424) with
-//      all-MANUAL_KYC participants and an LOA doc for the signatory applicant.
-//      Individual customer creation is NOT enabled on this self-serve sandbox
-//      client ("Unable to get compliance configuration") — corporate is the way.
-//   2. Add a beneficiary via POST /api/v2/.../beneficiaries (FLAT payload,
-//      not the nested beneficiaryDetail/payoutDetail shape).
-//   3. Fund the SGD wallet (works only after KYB status = COMPLETED).
+// VERIFIED FLOW (11 Jul 2026, run live against the sandbox):
+//   1. Create a corporate customer via the V5 API
+//      (POST /api/v5/client/{c}/customers) — on this self-serve client it
+//      returns status "clear" INSTANTLY, no KYB queue. The older v1/v2
+//      onboarding APIs put customers into a compliance queue that never
+//      resolves on this tenant (no ekycRedirectUrl, no simulated agent).
+//   2. Add a beneficiary via POST /api/v2/.../beneficiaries (FLAT payload).
+//   3. Fund the SGD wallet from the client prefund pool
+//      (v2 fund, fundingChannel "prefund" — lowercase enums in v2).
+//      This only works once a client prefund request has been APPROVED —
+//      approval happens in the Nium portal, not via API. Two requests are
+//      pending: CP8057725314 / CP7277418884 (SGD 10,000 each).
 //
-// This client is SGD-ONLY (regulatoryRegion SG): no USD, no FX quote.
-// Remittance in payout.js is SGD wallet → SGD local payout.
+// This client is SGD-ONLY (regulatoryRegion SG): no USD, no FX quotes.
+// payout.js fires SGD wallet → SGD local payout to the beneficiary below.
 //
 // Protection: requires header  x-setup-token: <NIUM_SETUP_TOKEN>
 //
 // Run after deploy:
 //   curl -X POST https://YOUR-SITE.netlify.app/.netlify/functions/nium-setup \
 //        -H "x-setup-token: YOUR_TOKEN"
-// If step 1 returns IN_PROGRESS, wait a few minutes and run again — it will
-// find the existing customer, then do steps 2 and 3.
+// Idempotent: reuses the existing v5 customer and beneficiary on rerun.
 
 const NIUM_HOST = "https://gateway.nium.com";
 
@@ -45,182 +47,66 @@ async function nium(method, path, key, body) {
   return { ok: res.ok, status: res.status, data, path };
 }
 
-// Nium's documented SG manual-KYB public-company example (reg 903280424),
-// with two required modifications discovered live:
-//   1. All kycModes forced to MANUAL_KYC — this client has no ekycRedirectUrl,
-//      so any E_KYC participant gets stuck at the MyInfo redirect forever.
-//   2. The applicant is a SIGNATORY, so a Letter of Authorization document
-//      (documentType "LOA") is mandatory — without it the case silently
-//      stalls in review. Every documented SG example omits it.
-const CORPORATE_PAYLOAD = {
-  "region": "SG",
-  "businessDetails": {
-    "referenceId": "6913aac9-cbd9-4783-8fd6-07ea9655dfec",
-    "businessName": "Singapore Special Appliances",
-    "businessRegistrationNumber": "903280424",
-    "website": "www.singaporeappliances.com",
-    "businessType": "PUBLIC_COMPANY",
-    "legalDetails": {
-      "registeredCountry": "SG",
-      "registeredDate": "2000-01-02",
-      "listedExchange": "EX080"
-    },
-    "addresses": {
-      "registeredAddress": {
-        "addressLine1": "High Street 101, 56th Avenue",
-        "addressLine2": "Hyung County",
-        "city": "Singapore",
-        "country": "SG",
-        "postcode": "28046"
-      }
-    },
-    "documentDetails": [
-      {
-        "documentType": "BUSINESS_REGISTRATION_DOC",
-        "document": [
-          {
-            "document": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAABlBMVEX///+/v7+jQ3Y5AAAADklEQVQI12P4AIX8EAgALgAD/aNpbtEAAAAASUVORK5CYII",
-            "fileName": "BRD.pdf",
-            "fileType": "application/pdf"
-          }
-        ]
-      }
-    ],
-    "stakeholders": [
-      {
-        "referenceId": "d25c5c6f-d4b0-47a5-986e-7b50641b65fc",
-        "stakeholderDetails": {
-          "firstName": "John",
-          "middleName": "C",
-          "lastName": "Grisham",
-          "nationality": "IN",
-          "kycMode": "MANUAL_KYC",
-          "professionalDetails": [
-            {
-              "position": "DIRECTOR"
-            },
-            {
-              "position": "UBO",
-              "sharePercentage": "60"
-            }
-          ],
-          "address": {
-            "addressLine1": "7 Ang Mo Kio Street",
-            "addressLine2": "64 No.01-01",
-            "city": "Singapore",
-            "country": "SG",
-            "postcode": "28046"
-          },
-          "documentDetails": [
-            {
-              "documentType": "PASSPORT",
-              "documentExpiryDate": "2029-09-10",
-              "documentIssuanceCountry": "IN",
-              "documentNumber": "098734524",
-              "document": [
-                {
-                  "document": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAABlBMVEX///+/v7+jQ3Y5AAAADklEQVQI12P4AIX8EAgALgAD/aNpbtEAAAAASUVORK5CYII",
-                  "fileName": "Passport.pdf",
-                  "fileType": "application/pdf"
-                }
-              ]
-            }
-          ]
-        }
-      },
-      {
-        "referenceId": "006ebeeb-3ede-4f49-8381-1e382334131c",
-        "businessPartner": {
-          "legalDetails": {
-            "registeredCountry": "FR"
-          },
-          "businessEntityType": "SHAREHOLDER",
-          "businessName": "Fiago AgriTECH LIMITED",
-          "businessRegistrationNumber": "822843822"
-        }
-      }
-    ],
-    "applicantDetails": {
-      "referenceId": "0c61376b-70c3-4d45-9193-0a6ddece4e0e",
-      "firstName": "Mitchell",
-      "middleName": "",
-      "lastName": "Johnson",
-      "dateOfBirth": "1982-07-17",
-      "nationality": "SG",
-      "kycMode": "MANUAL_KYC",
-      "contactDetails": {
-        "contactNo": "222268870",
-        "countryCode": "SG",
-        "email": "hardik@singel.com"
-      },
-      "professionalDetails": [
-        {
-          "position": "SIGNATORY"
-        }
-      ],
-      "address": {
-        "addressLine1": "7 Ang Mo Kio Street",
-        "addressLine2": "64 No.01-01",
-        "city": "Singapore",
-        "country": "SG",
-        "postcode": "28046"
-      },
-      "documentDetails": [
-        {
-          "documentType": "PASSPORT",
-          "documentExpiryDate": "2029-09-10",
-          "documentIssuanceCountry": "SG",
-          "documentNumber": "E7654321K",
-          "document": [
-            {
-              "document": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAABlBMVEX///+/v7+jQ3Y5AAAADklEQVQI12P4AIX8EAgALgAD/aNpbtEAAAAASUVORK5CYII",
-              "fileName": "Passport.pdf",
-              "fileType": "application/pdf"
-            }
-          ]
-        },
-        {
-          "documentType": "LOA",
-          "document": [
-            {
-              "document": "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAIAQMAAAD+wSzIAAAABlBMVEX///+/v7+jQ3Y5AAAADklEQVQI12P4AIX8EAgALgAD/aNpbtEAAAAASUVORK5CYII",
-              "fileName": "LOA.pdf",
-              "fileType": "application/pdf"
-            }
-          ]
-        }
-      ]
-    },
-    "additionalInfo": {
-      "isSameBusinessAddress": "Yes",
-      "searchId": "6nf3aac9-cbd9-423k-8fd6-07ea9345dfec"
-    }
+// V5 corporate customer, SG region. All enum codes below come from
+// GET /api/v2/client/{c}/onboarding/constants?region=SG&type=CORPORATE
+// (they are region-specific; UK example codes from the docs are rejected).
+// Note: v5 INDIVIDUAL onboarding is broken for SG on this tenant (its
+// annualIncome constant table is missing server-side) — corporate only.
+const SG_ADDRESS = {
+  addressLine1: "22 Circular Road",
+  addressLine2: "02-01",
+  city: "Singapore",
+  country: "SG",
+  postcode: "049422",
+  state: "Singapore",
+};
+
+const V5_CUSTOMER = {
+  region: "SG",
+  type: "corporate",
+  kycType: "minimum",
+  externalId: "hibi-demo-v5-corp-001",
+  businessName: "Hibi Demo Trading Pte Ltd",
+  businessRegistrationNumber: "202012345K",
+  businessType: "PRIVATE_COMPANY",
+  registeredCountry: "SG",
+  registeredDate: "2020-07-20",
+  website: "https://hibi-demo.netlify.app",
+  addresses: { businessAddress: { ...SG_ADDRESS }, registeredAddress: { ...SG_ADDRESS } },
+  sizeOfBusiness: { annualTurnover: "SG008", totalEmployees: "EM006" },
+  natureOfBusiness: { industryCodes: ["IS134"] },
+  expectedAccountUsage: {
+    credit: { averageTransactionValue: "ATVSG02", monthlyTransactionVolume: "MVSG02", monthlyTransactions: "ATC01" },
+    intendedUses: ["IU002"],
   },
-  "riskAssessmentInfo": {
-    "countryOfOperation": [
-      "HK",
-      "IN"
-    ],
-    "transactionCountries": [
-      "GB",
-      "AU",
-      "FR"
-    ],
-    "totalEmployees": "EM009",
-    "annualTurnover": "SG011",
-    "industrySector": "IS144",
-    "intendedUseOfAccount": "IU003"
+  applicant: {
+    address: { ...SG_ADDRESS },
+    dateOfBirth: "1985-05-15",
+    email: "hibi.applicant@example.com",
+    externalId: "hibi-demo-v5-applicant",
+    firstName: "Hibi",
+    lastName: "Director",
+    mobile: "80000002",
+    mobileCountryCode: "65",
+    nationality: "SG",
+    positions: [{ title: "director" }],
+    sharePercentage: 80,
   },
-  "tags": [
-    {
-      "key": "tag1",
-      "value": "tag1value"
-    },
-    {
-      "key": "tag2",
-      "value": "tag2value"
-    }
-  ]
+  stakeholders: {
+    individual: [{
+      address: { ...SG_ADDRESS },
+      dateOfBirth: "1985-05-15",
+      email: "hibi.applicant@example.com",
+      externalId: "hibi-demo-v5-stk",
+      firstName: "Hibi",
+      lastName: "Director",
+      mobile: 80000002,
+      mobileCountryCode: 65,
+      nationality: "SG",
+      positions: [{ title: "director" }],
+      sharePercentage: 80,
+    }],
+  },
 };
 
 export default async (req) => {
@@ -237,23 +123,22 @@ export default async (req) => {
 
   const log = {};
 
-  // ---- 1. Corporate customer: reuse existing, else onboard ----
-  let customerHashId, walletHashId, complianceStatus;
-  const list = await nium("GET", `/api/v2/client/${CLIENT}/customers?page=0&size=10`, KEY);
-  log.customerList = { status: list.status, totalElements: list.data.totalElements };
-  const existing = (list.data.content || [])[0];
+  // ---- 1. V5 corporate customer: reuse existing, else create ----
+  let customerHashId, walletHashId, customerStatus;
+  const list = await nium("GET", `/api/v5/client/${CLIENT}/customers`, KEY);
+  const existing = (list.data.customers || []).find((c) => c.type === "corporate");
   if (existing) {
     customerHashId = existing.customerHashId;
-    walletHashId = existing.walletHashId;
-    complianceStatus = existing.complianceStatus;
-    log.customer = { reused: true, customerHashId, walletHashId, complianceStatus };
+    walletHashId = (existing.wallets || [])[0]?.walletHashId;
+    customerStatus = existing.status;
+    log.customer = { reused: true, customerHashId, walletHashId, status: customerStatus };
   } else {
-    const created = await nium("POST", `/api/v1/client/${CLIENT}/corporate`, KEY, CORPORATE_PAYLOAD);
+    const created = await nium("POST", `/api/v5/client/${CLIENT}/customers`, KEY, V5_CUSTOMER);
     log.customer = created;
-    if (!created.ok) return finish(log, "corporate onboarding failed — check log.customer.data");
+    if (!created.ok) return finish(log, "v5 customer creation failed — check log.customer.data");
     customerHashId = created.data.customerHashId;
-    walletHashId = created.data.walletHashId;
-    complianceStatus = created.data.status;
+    walletHashId = (created.data.wallets || [])[0]?.walletHashId;
+    customerStatus = created.data.status;
   }
 
   // ---- 2. Beneficiary: reuse existing, else create (FLAT v2 payload) ----
@@ -285,20 +170,22 @@ export default async (req) => {
     beneficiaryHashId = bene.data.beneficiaryHashId;
   }
 
-  // ---- 3. Fund the SGD wallet (requires KYB COMPLETED) ----
+  // ---- 3. Fund the SGD wallet from the client prefund pool ----
+  // v2 fund uses LOWERCASE enums. Fails with a 500 while the client pool is
+  // empty — approve a client prefund request in the Nium portal first.
   const fund = await nium("POST",
-    `/api/v1/client/${CLIENT}/customer/${customerHashId}/wallet/${walletHashId}/fund`, KEY, {
-      amount: 1000,
-      destinationCurrencyCode: "SGD",
+    `/api/v2/client/${CLIENT}/customer/${customerHashId}/wallet/${walletHashId}/fund`, KEY, {
       sourceCurrencyCode: "SGD",
-      fundingChannel: "PREFUND",
+      destinationCurrencyCode: "SGD",
+      sourceAmount: 1000,
+      fundingChannel: "prefund",
     });
-  log.fund = fund; // fails with "regulatory limits not found" until KYB completes — rerun later
+  log.fund = fund;
 
   return finish(log, null, {
     message: fund.ok
       ? "SETUP COMPLETE — copy these values into Netlify env vars, then redeploy:"
-      : `KYB status is ${complianceStatus} — auto-approval takes a few minutes; run this again until fund succeeds. Env vars below are already final:`,
+      : "Customer + beneficiary ready (env vars below are final). Wallet funding failed — approve the pending client prefund in the Nium portal, then run this again:",
     NIUM_CUSTOMER_HASH_ID: customerHashId,
     NIUM_WALLET_HASH_ID: walletHashId,
     NIUM_BENEFICIARY_ID: beneficiaryHashId,
